@@ -26,15 +26,34 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Register-SnipeAsset.ps
 
 Output is one JSON line. Exit codes: `0` created, `2` already registered (serial exists), `1` error.
 
+Audit trail: every result line (including `-DryRun` and errors) is appended to
+`C:\ProgramData\SnipeIT\register.log` as `timestamp<TAB>version<TAB>DOMAIN\user<TAB>json`.
+New assets get a `notes` entry: script version, timestamp, Windows account and hostname.
+
 | Switch / parameter | Purpose |
 |---|---|
 | `-DryRun` | No writes to Snipe-IT, wallpaper only previewed |
 | `-NoWallpaper` | Skip wallpaper stamping |
-| `-Serial <s>` | Override BIOS serial (testing; use only with `-DryRun`) |
-| `-StatusId`, `-ModelName`, `-Field*` | Snipe-IT IDs / custom field DB columns |
+| `-Serial <s>` | Override BIOS serial (testing). Only with `-DryRun`, otherwise exit 1 |
+| `-StatusName` | Status label for new assets, resolved by name (default `Ready to Deploy`) |
+| `-ModelName` | Snipe-IT model, resolved by name (default `VUT laptop`) |
+| `-StatusId`, `-ModelId` | Set to skip the name lookup |
+| `-Field*` | Custom field DB columns |
 
 ### Snipe-IT prerequisites
 
 - Auto-increment asset tags ON, unique serial numbers ON
 - Model "VUT laptop" with a fieldset containing the custom fields listed in AGENTS.md
-- Service account with: Assets view/create, Models view, Self → Create API keys
+  (checked before creating, also in `-DryRun`; missing fields → exit 1, because Snipe-IT would drop their values silently)
+- Status label "Ready to Deploy" (or pass `-StatusName` / `-StatusId`)
+- Service account with: Assets view/create, Models view, Status Labels view, Self → Create API keys
+
+## Development
+
+```powershell
+Invoke-ScriptAnalyzer -Path . -Recurse   # PSScriptAnalyzer
+Invoke-Pester .\tests                    # Pester 5; pure logic only, no hardware or API access
+```
+
+CI (`.github/workflows/ci.yml`) runs both on `windows-latest` under Windows PowerShell 5.1;
+it fails on analyzer findings of severity Error and on any failing test.

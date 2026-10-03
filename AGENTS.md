@@ -10,7 +10,7 @@ Owner: IT / cybersecurity manager (Lithuania). Asset management evidence is used
 ## Environment
 - Windows endpoints, **PowerShell 5.1** compatibility required (no PS7-only syntax: no `??`, no ternary, no `-Parallel`)
 - Microsoft 365 / Entra ID / Intune in use
-- Snipe-IT URL: `https://inventorius.liepu27.lt` (default of `-SnipeUrl`). IDs stay parameters; `StatusId = 2` still unverified
+- Snipe-IT URL: `https://inventorius.liepu27.lt` (default of `-SnipeUrl`). IDs stay parameters; model and status label are resolved by name (`-ModelId` / `-StatusId` skip the lookup)
 - Repo: https://github.com/Visos-Upes-Teka/VUTinventory (private)
 - Locale: Lithuanian. CSV output must use **`;` separator** and UTF-8 (with BOM for Excel). User-facing document text (shipment act) in Lithuanian.
 
@@ -19,12 +19,12 @@ Owner: IT / cybersecurity manager (Lithuania). Asset management evidence is used
 - **Logical errors return HTTP 200** with `{"status":"error","messages":...}` — always check body `status`
 - Names in responses are **HTML-encoded** → `[Net.WebUtility]::HtmlDecode()` before comparing
 - PS 5.1 mangles non-ASCII in request bodies → send `[Text.Encoding]::UTF8.GetBytes($json)` with `application/json; charset=utf-8`
-- Force TLS 1.2: `[Net.ServicePointManager]::SecurityProtocol = 'Tls12'`
+- Ensure TLS 1.2 without disabling others: if `[Net.ServicePointManager]::SecurityProtocol` is not `SystemDefault` (0), `-bor [Net.SecurityProtocolType]::Tls12`; leave `SystemDefault` as is (OS negotiates 1.2/1.3)
 - Default rate limit 120 req/min (`API_THROTTLE_PER_MINUTE`) — throttle/back off in loops
-- Custom fields are set by DB column name (e.g. `_snipeit_cpu_1`); values are silently dropped if the model's fieldset doesn't contain the field
+- Custom fields are set by DB column name (e.g. `_snipeit_cpu_1`); values are silently dropped if the model's fieldset doesn't contain the field → check first via `GET /models/{id}` → `default_fieldset_values[].db_column_name` (Snipe-IT 6.0.x+)
 - **No bulk checkout endpoint** — loop `POST /hardware/{id}/checkout`
 - Useful endpoints:
-  - `GET /hardware/byserial/{serial}`, `GET /hardware/bytag/{tag}`
+  - `GET /hardware/byserial/{serial}`, `GET /hardware/bytag/{tag}` — byserial not found = HTTP 200 `{"status":"error","messages":"<translated text>","payload":null}`; detect by shape, never by message text
   - `POST /hardware`, `PATCH /hardware/{id}`
   - `POST /hardware/{id}/checkout` — body: `checkout_to_type` (`user`|`location`|`asset`), `assigned_user` / `assigned_location` / `assigned_asset`, `note`, optional `checkout_at`, `expected_checkin`
   - `GET /reports/activity?search=&action_type=checkout&target_type=&target_id=`
@@ -36,22 +36,25 @@ Owner: IT / cybersecurity manager (Lithuania). Asset management evidence is used
 - `$ErrorActionPreference = 'Stop'`, single top-level try/catch
 - Machine-readable output: **one JSON line on stdout** + exit codes (`0` success, `1` error, `2` business "already exists"/rejected)
 - `-DryRun` switch: collect + validate + read-only API calls, no writes
-- Helper `Invoke-Snipe -Method -Path -Body [-AllowError]` that throws on `status=error`
+- Pure logic lives in small side-effect-free functions (`Test-JunkSerial`, `Get-LaptopModelString`, `Test-InternalDisk`, `Get-DiskTypeLabel`, `Format-StorageType`) tested by Pester 5 in `tests/` (functions loaded via the AST, the script body never runs). CI (`.github/workflows/ci.yml`, `windows-latest`, Windows PowerShell 5.1): PSScriptAnalyzer (fails on Error) + Pester
+- Helper `Invoke-Snipe -Method -Path -Body [-AllowError]` that throws on `status=error`; 30 s timeout; retries (3 attempts, backoff, honours `Retry-After`) GET on network error/429/5xx but POST/PATCH **only on 429** (a retried write after timeout/5xx could duplicate); errors include HTTP status + response body (max 300 chars)
 
 ## Task 1 — Register-SnipeAsset.ps1 (works; tested on one HP EliteBook)
 - All laptops use one fixed Snipe-IT model **"VUT laptop"** (id 2, resolved by name, never created). Real make/model goes to custom field "Laptop model"
 - Custom fields (all format ANY / free text) — DB columns:
-  `_snipeit_laptop_model_8`, `_snipeit_cpu_2`, `_snipeit_ram_3` (`32 GB`), `_snipeit_storage_gb_4` (`512`, sum of internal disks),
-  `_snipeit_storage_type_5` (`NVMe SSD`, or `SATA SSD 960 GB; NVMe SSD 2000 GB`), `_snipeit_operating_system_6` (`Windows 11 Pro 25H2`),
+  `_snipeit_laptop_model_8`, `_snipeit_cpu_2`, `_snipeit_ram_3` (`32 GB`), `_snipeit_storage_gb_4` (`512`, sum of internal disks incl. soldered eMMC; USB, removable SD/MMC and virtual disks excluded),
+  `_snipeit_storage_type_5` (`NVMe SSD`, `eMMC`, or `SATA SSD 960 GB; NVMe SSD 2000 GB`), `_snipeit_operating_system_6` (`Windows 11 Pro 25H2`),
   `_snipeit_batery_health_7` (`87%` = FullChargeCapacity / DesignCapacity, NOT charge level; optional)
+- Status label resolved by name: `-StatusName` (default `Ready to Deploy`), never created
 - MAC address intentionally NOT collected (user decision)
 - Battery: root\wmi first, fallback `powercfg /batteryreport /xml` (HP lacks `BatteryStaticData`). Fallback untested on a real laptop yet
-- Rejects junk serials (`Default string`, `To be filled by O.E.M.`, …); `-Serial` override for testing (only with `-DryRun`)
+- Rejects junk serials (`Default string`, `To be filled by O.E.M.`, …); `-Serial` override for testing (only with `-DryRun`; enforced, exit 1 otherwise)
 - Duplicate check by serial → if exists: exit 2 + existing `asset_tag`
+- Audit trail (A.5.9): `notes` on create = `Registered by Register-SnipeAsset.ps1 v<ScriptVersion> on <ISO time> by <DOMAIN\user> from <hostname>`; every JSON result line appended to `C:\ProgramData\SnipeIT\register.log` (tab-separated: time, version, account, json). Logging failure never changes stdout/exit code; the token is never logged
 - Creates asset without `asset_tag` (auto-increment ON, prefix `VUT`, e.g. `VUT00002`); hostname = asset name
 - Stamps asset tag + hostname + S/N onto desktop wallpaper (`C:\ProgramData\SnipeIT\wallpaper.png`): admin → HKLM PersonalizationCSP (all users, locks wallpaper; UNVERIFIED on Windows Pro), non-SYSTEM → SystemParametersInfo for current user. Wallpaper failure never fails registration. `-NoWallpaper` to skip; `-DryRun` renders preview to %TEMP%
 - Run: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Register-SnipeAsset.ps1 [-DryRun]` (execution policy is Restricted on endpoints)
-- Possible follow-ups: `-Update` mode (PATCH custom fields of existing asset); Pester tests; retry/backoff; logging; code signing (AllSigned)
+- Possible follow-ups: `-Update` mode (PATCH custom fields of existing asset); code signing (AllSigned)
 
 ## Task 2 — Bulk checkout / shipment script (TODO)
 Agreed design:
