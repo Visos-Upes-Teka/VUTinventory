@@ -45,7 +45,7 @@ param(
     [string]$FieldOs          = '_snipeit_operating_system_6',
     [string]$FieldBattery     = '_snipeit_batery_health_7',
 
-    [string]$Serial,       # Override BIOS serial (testing / boards without a valid serial)
+    [string]$Serial,       # Override BIOS serial for testing; only allowed together with -DryRun
 
     # Wallpaper stamping
     [string]$WallpaperBase = "$env:windir\Web\Wallpaper\Windows\img0.jpg",  # background; solid colour if missing
@@ -215,6 +215,11 @@ function Update-Wallpaper {
 }
 
 try {
+    # A fake serial must never reach Snipe-IT
+    if ($Serial -and -not $DryRun) {
+        Out-Result @{ result = 'error'; message = '-Serial is only allowed together with -DryRun' } 1
+    }
+
     # ---------- 1. Hardware inventory ----------
     $bios = Get-CimInstance Win32_BIOS
     $cs   = Get-CimInstance Win32_ComputerSystem

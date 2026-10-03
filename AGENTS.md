@@ -46,7 +46,7 @@ Owner: IT / cybersecurity manager (Lithuania). Asset management evidence is used
   `_snipeit_batery_health_7` (`87%` = FullChargeCapacity / DesignCapacity, NOT charge level; optional)
 - MAC address intentionally NOT collected (user decision)
 - Battery: root\wmi first, fallback `powercfg /batteryreport /xml` (HP lacks `BatteryStaticData`). Fallback untested on a real laptop yet
-- Rejects junk serials (`Default string`, `To be filled by O.E.M.`, …); `-Serial` override for testing (only with `-DryRun`)
+- Rejects junk serials (`Default string`, `To be filled by O.E.M.`, …); `-Serial` override for testing (only with `-DryRun`; enforced, exit 1 otherwise)
 - Duplicate check by serial → if exists: exit 2 + existing `asset_tag`
 - Creates asset without `asset_tag` (auto-increment ON, prefix `VUT`, e.g. `VUT00002`); hostname = asset name
 - Stamps asset tag + hostname + S/N onto desktop wallpaper (`C:\ProgramData\SnipeIT\wallpaper.png`): admin → HKLM PersonalizationCSP (all users, locks wallpaper; UNVERIFIED on Windows Pro), non-SYSTEM → SystemParametersInfo for current user. Wallpaper failure never fails registration. `-NoWallpaper` to skip; `-DryRun` renders preview to %TEMP%

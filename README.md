@@ -30,7 +30,7 @@ Output is one JSON line. Exit codes: `0` created, `2` already registered (serial
 |---|---|
 | `-DryRun` | No writes to Snipe-IT, wallpaper only previewed |
 | `-NoWallpaper` | Skip wallpaper stamping |
-| `-Serial <s>` | Override BIOS serial (testing; use only with `-DryRun`) |
+| `-Serial <s>` | Override BIOS serial (testing). Only with `-DryRun`, otherwise exit 1 |
 | `-StatusId`, `-ModelName`, `-Field*` | Snipe-IT IDs / custom field DB columns |
 
 ### Snipe-IT prerequisites
