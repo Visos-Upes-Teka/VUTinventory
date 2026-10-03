@@ -1,0 +1,11 @@
+# Secrets - never commit
+snipeit.token
+*.token
+.env
+
+# Script by-products
+battery-*.xml
+snipeit-wallpaper-preview.png
+
+# Local tool settings
+.claude/settings.local.json

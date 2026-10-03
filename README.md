@@ -1,0 +1,40 @@
+# VUT inventory
+
+PowerShell automation for the VUT Snipe-IT instance (https://inventorius.liepu27.lt).
+Agent / project context: [AGENTS.md](AGENTS.md).
+
+## Register-SnipeAsset.ps1
+
+Registers a prepared Windows laptop in Snipe-IT (model "VUT laptop") with CPU, RAM, storage,
+OS and battery health in custom fields, then stamps the generated asset tag onto the desktop wallpaper.
+
+### Setup
+
+1. Put the API token into `snipeit.token` next to the script (one line, no quotes).
+   The file is git-ignored — **never commit it**. Alternatives: `$env:SNIPEIT_TOKEN` or `-ApiToken`.
+2. Run PowerShell **as administrator** (needed for the device-wide wallpaper).
+
+### Usage
+
+```powershell
+# Check only: collects data, read-only API calls, wallpaper preview to %TEMP%
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Register-SnipeAsset.ps1 -DryRun
+
+# Register
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Register-SnipeAsset.ps1
+```
+
+Output is one JSON line. Exit codes: `0` created, `2` already registered (serial exists), `1` error.
+
+| Switch / parameter | Purpose |
+|---|---|
+| `-DryRun` | No writes to Snipe-IT, wallpaper only previewed |
+| `-NoWallpaper` | Skip wallpaper stamping |
+| `-Serial <s>` | Override BIOS serial (testing; use only with `-DryRun`) |
+| `-StatusId`, `-ModelName`, `-Field*` | Snipe-IT IDs / custom field DB columns |
+
+### Snipe-IT prerequisites
+
+- Auto-increment asset tags ON, unique serial numbers ON
+- Model "VUT laptop" with a fieldset containing the custom fields listed in AGENTS.md
+- Service account with: Assets view/create, Models view, Self → Create API keys
