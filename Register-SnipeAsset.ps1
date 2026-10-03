@@ -220,10 +220,11 @@ try {
     $cs   = Get-CimInstance Win32_ComputerSystem
     $csp  = Get-CimInstance Win32_ComputerSystemProduct
 
-    $serial = if ($Serial) { $Serial.Trim() } else { "$($bios.SerialNumber)".Trim() }
+    # NB: $hwSerial, not $serial - PS variables are case-insensitive, $serial IS the -Serial parameter
+    $hwSerial = if ($Serial) { $Serial.Trim() } else { "$($bios.SerialNumber)".Trim() }
     $badSerial = '^(|0+|none|default string|to be filled by o\.e\.m\.|system serial number|not specified|n/?a|chassis serial number)$'
-    if ($serial -match $badSerial) {
-        Out-Result @{ result = 'error'; message = "Invalid BIOS serial: '$serial'" } 1
+    if ($hwSerial -match $badSerial) {
+        Out-Result @{ result = 'error'; message = "Invalid BIOS serial: '$hwSerial'" } 1
     }
 
     $mfgMap = @{
@@ -309,7 +310,7 @@ try {
 
     $inventory = [ordered]@{
         hostname     = $hostname
-        serial       = $serial
+        serial       = $hwSerial
         laptop_model = $laptopModel
         cpu          = $cpu
         ram          = "$ramGb GB"
@@ -327,7 +328,7 @@ try {
     }
 
     # ---------- 2. Duplicate check ----------
-    $existing = Invoke-Snipe GET "/hardware/byserial/$([uri]::EscapeDataString($serial))" -AllowError
+    $existing = Invoke-Snipe GET "/hardware/byserial/$([uri]::EscapeDataString($hwSerial))" -AllowError
     if ($existing.total -gt 0) {
         $a = $existing.rows | Select-Object -First 1
         Out-Result @{
@@ -335,9 +336,9 @@ try {
             message   = 'Asset with this serial already registered'
             asset_tag = $a.asset_tag
             id        = $a.id
-            serial    = $serial
+            serial    = $hwSerial
             matches   = $existing.total
-            wallpaper = Update-Wallpaper -Tag $a.asset_tag -SubText "$hostname  |  S/N $serial"
+            wallpaper = Update-Wallpaper -Tag $a.asset_tag -SubText "$hostname  |  S/N $hwSerial"
         } 2
     }
 
@@ -354,7 +355,7 @@ try {
     $assetBody = @{
         model_id  = $ModelId
         status_id = $StatusId
-        serial    = $serial
+        serial    = $hwSerial
         name      = $hostname
     }
     $assetBody[$FieldLaptopModel] = $laptopModel
@@ -370,13 +371,13 @@ try {
             result    = 'dryrun'
             model_id  = $ModelId
             body      = $assetBody
-            wallpaper = Update-Wallpaper -Tag 'DRYRUN-0000' -SubText "$hostname  |  S/N $serial"
+            wallpaper = Update-Wallpaper -Tag 'DRYRUN-0000' -SubText "$hostname  |  S/N $hwSerial"
         } 0
     }
 
     $created = (Invoke-Snipe POST '/hardware' $assetBody).payload
 
-    $wallpaper = Update-Wallpaper -Tag $created.asset_tag -SubText "$hostname  |  S/N $serial"
+    $wallpaper = Update-Wallpaper -Tag $created.asset_tag -SubText "$hostname  |  S/N $hwSerial"
     Out-Result (@{ result = 'created'; asset_tag = $created.asset_tag; id = $created.id; wallpaper = $wallpaper } + $inventory) 0
 }
 catch {
