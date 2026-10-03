@@ -333,7 +333,17 @@ try {
     }
 
     # ---------- 2. Duplicate check ----------
+    # Not found = HTTP 200 {"status":"error","messages":"Asset does not exist.","payload":null}
+    # (AssetsController::showBySerial). The message is translated to the API user's locale,
+    # so match the shape, not the text. Any other error must not be read as "not found".
+    # Verified against a live Snipe-IT v8.8.0 (2026-10-03)
     $existing = Invoke-Snipe GET "/hardware/byserial/$([uri]::EscapeDataString($hwSerial))" -AllowError
+    if ($existing.status -eq 'error') {
+        if ($null -ne $existing.payload -or $existing.messages -isnot [string]) {
+            throw "Snipe-IT API error (GET /hardware/byserial): $($existing.messages | ConvertTo-Json -Compress)"
+        }
+        $existing = $null
+    }
     if ($existing.total -gt 0) {
         $a = $existing.rows | Select-Object -First 1
         Out-Result @{
